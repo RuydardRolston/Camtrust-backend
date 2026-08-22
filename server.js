@@ -1,6 +1,9 @@
 import express from 'express';
 import  {connectDB,sequelize}  from "./db_connect.js";
 import userRouter from "./Route/userRoute.js";
+import dotenv from "dotenv";
+dotenv.config();
+  
 const app = express();
 const port= "4000";
 
