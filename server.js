@@ -1,15 +1,27 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDB, sequelize } from './db_connect.js';
+import { createServer } from 'http';
+import { initSocket } from './utils/socket.js';
+import { connectDB, syncDB } from './db_connect.js';
+import './models/index.js';
 import userRouter from './Route/userRoute.js';
+import projectRouter from './Route/projectRoute.js';
+import milestoneRouter from './Route/milestoneRoute.js';
+import evidenceRouter from './Route/evidenceRoute.js';
+import reportRouter from './Route/reportRoute.js';
+import documentRouter from './Route/documentRoute.js';
+import verificationRouter from './Route/verificationRoute.js';
+import notificationRouter from './Route/notificationRoute.js';
+import assignmentRouter from './Route/assignmentRoute.js';
+import aiRouter from './Route/aiRoute.js';
+import adminRouter from './Route/adminRoute.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
 
-// Enable CORS for frontend clients
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -24,20 +36,31 @@ app.use(cors({
 
 app.use(express.json());
 
-// Health check endpoint
+app.use('/api/users', userRouter);
+app.use('/api/projects', projectRouter);
+app.use('/api/milestones', milestoneRouter);
+app.use('/api/evidence', evidenceRouter);
+app.use('/api/reports', reportRouter);
+app.use('/api/documents', documentRouter);
+app.use('/api/verifications', verificationRouter);
+app.use('/api/notifications', notificationRouter);
+app.use('/api/assignments', assignmentRouter);
+app.use('/api/ai', aiRouter);
+app.use('/api/admin', adminRouter);
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'CamTrust API is running' });
 });
 
-// User routes
-app.use('/api/users', userRouter);
+const httpServer = createServer(app);
+initSocket(httpServer);
 
-app.listen(port, async () => {
+httpServer.listen(port, async () => {
   try {
     await connectDB();
-    await sequelize.sync({ force: false });
+    await syncDB();
     console.log(`Server is running and listening on port ${port}`);
   } catch (error) {
-    console.error('Failed to initialize database connection:', error);
+    console.error('Failed to initialize server:', error);
   }
-});
+});

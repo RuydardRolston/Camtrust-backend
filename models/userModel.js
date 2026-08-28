@@ -14,7 +14,14 @@ const User = sequelize.define("User", {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        unique: true,
+        validate: {
+            isEmail: true
+        }
+    },
+    phone: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
     password: {
         type: DataTypes.STRING,
@@ -23,7 +30,35 @@ const User = sequelize.define("User", {
     role: {
         type: DataTypes.STRING,
         allowNull: false,
-        defaultValue: "property_owner"
+        defaultValue: "property_owner",
+        validate: {
+            isIn: [["property_owner", "professional", "administrator"]]
+        }
+    },
+    status: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "active",
+        validate: {
+            isIn: [["active", "inactive"]]
+        }
+    },
+    address: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    specialty: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    verified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    employeeId: {
+        type: DataTypes.STRING,
+        allowNull: true
     }
 });
 
