@@ -29,6 +29,14 @@ const ProjectAssignment = sequelize.define("ProjectAssignment", {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
+    },
+    status: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "proposed",
+        validate: {
+            isIn: [["proposed", "accepted", "rejected"]]
+        }
     }
 }, {
     indexes: [

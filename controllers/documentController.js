@@ -5,7 +5,7 @@ import ProjectAssignment from "../models/projectAssignmentModel.js";
 import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
-import { emitToProject } from "../utils/socket.js";
+import { emitToProject, emitToUser } from "../utils/socket.js";
 import fs from "fs";
 import path from "path";
 
@@ -67,11 +67,12 @@ export const uploadDocument = async (req, res) => {
     emitToProject(projectId, "document:new", document);
 
     if (!isOwner) {
-      await Notification.create({
+      const notification = await Notification.create({
         userId: project.ownerId,
         message: `A new document has been uploaded to project "${project.title}"`,
         status: "unread",
       });
+      emitToUser(project.ownerId, "notification:new", notification);
     }
 
     return res.status(201).json({ success: true, document });
@@ -107,6 +108,22 @@ export const getProjectDocuments = async (req, res) => {
     }
 
     const documents = await Document.findAll({ where: { projectId } });
+
+    return res.status(200).json({ success: true, documents });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getAllDocuments = async (req, res) => {
+  try {
+    const documents = await Document.findAll({
+      include: [
+        { model: Project, as: "project", attributes: ["id", "title", "location"] },
+        { model: User, as: "uploadedBy", attributes: ["id", "fullName", "email", "verified"] },
+      ],
+    });
 
     return res.status(200).json({ success: true, documents });
   } catch (error) {

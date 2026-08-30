@@ -5,6 +5,7 @@ import SiteEvidence from './siteEvidenceModel.js';
 import ProgressReport from './progressReportModel.js';
 import Document from './documentModel.js';
 import Verification from './verificationModel.js';
+import VerificationDocument from './verificationDocumentModel.js';
 import Notification from './notificationModel.js';
 import ProjectAssignment from './projectAssignmentModel.js';
 
@@ -37,6 +38,12 @@ Verification.belongsTo(User, { foreignKey: 'administratorId', as: 'administrator
 
 User.hasMany(Verification, { foreignKey: 'professionalId', as: 'verificationRequests' });
 Verification.belongsTo(User, { foreignKey: 'professionalId', as: 'professional' });
+
+Verification.hasMany(VerificationDocument, { foreignKey: 'verificationId', as: 'documents', onDelete: 'CASCADE' });
+VerificationDocument.belongsTo(Verification, { foreignKey: 'verificationId', as: 'verification' });
+
+User.hasMany(VerificationDocument, { foreignKey: 'userId', as: 'verificationDocuments' });
+VerificationDocument.belongsTo(User, { foreignKey: 'userId', as: 'uploader' });
 
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
 Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });

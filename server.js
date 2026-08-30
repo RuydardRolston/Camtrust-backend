@@ -12,8 +12,10 @@ import evidenceRouter from './Route/evidenceRoute.js';
 import reportRouter from './Route/reportRoute.js';
 import documentRouter from './Route/documentRoute.js';
 import verificationRouter from './Route/verificationRoute.js';
+import verificationDocumentRouter from './Route/verificationDocumentRoute.js';
 import notificationRouter from './Route/notificationRoute.js';
 import assignmentRouter from './Route/assignmentRoute.js';
+import assignmentProposalRouter from './Route/assignmentProposalRoute.js';
 import aiRouter from './Route/aiRoute.js';
 import adminRouter from './Route/adminRoute.js';
 
@@ -25,8 +27,10 @@ const port = process.env.PORT || 4000;
 app.use(cors({
   origin: [
     'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
     'http://127.0.0.1:3000'
   ],
   credentials: true,
@@ -43,8 +47,10 @@ app.use('/api/evidence', evidenceRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/documents', documentRouter);
 app.use('/api/verifications', verificationRouter);
+app.use('/api/verifications', verificationDocumentRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/assignments', assignmentRouter);
+app.use('/api/assignments', assignmentProposalRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/admin', adminRouter);
 
@@ -52,15 +58,21 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'CamTrust API is running' });
 });
 
-const httpServer = createServer(app);
-initSocket(httpServer);
-
-httpServer.listen(port, async () => {
+const startServer = async () => {
   try {
     await connectDB();
     await syncDB();
-    console.log(`Server is running and listening on port ${port}`);
+
+    const httpServer = createServer(app);
+    initSocket(httpServer);
+
+    httpServer.listen(port, () => {
+      console.log(`Server is running and listening on port ${port}`);
+    });
   } catch (error) {
     console.error('Failed to initialize server:', error);
+    process.exit(1);
   }
-});
+};
+
+startServer();

@@ -1,6 +1,7 @@
 import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import Notification from "../models/notificationModel.js";
 
 export const SignUp = async (req, res) => {
   try {
@@ -46,6 +47,15 @@ export const SignUp = async (req, res) => {
       password: hashedPassword,
       role,
     });
+
+    const admins = await User.findAll({ where: { role: "administrator" } });
+    for (const admin of admins) {
+      await Notification.create({
+        userId: admin.id,
+        message: `New user "${fullName}" (${email}) registered as ${role}`,
+        status: "unread",
+      });
+    }
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
@@ -125,6 +135,19 @@ export const getAllUsers = async (req, res) => {
     return res.status(200).json({ message: "Users fetched successfully", users });
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+};
+
+export const getVerifiedProfessionals = async (req, res) => {
+  try {
+    const professionals = await User.findAll({
+      where: { role: "professional", verified: true },
+      attributes: { exclude: ["password"] },
+    });
+    return res.status(200).json({ success: true, professionals });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 

@@ -6,6 +6,8 @@ import User from './models/userModel.js';
 import Project from './models/projectModel.js';
 import Milestone from './models/milestoneModel.js';
 import Verification from './models/verificationModel.js';
+import VerificationDocument from './models/verificationDocumentModel.js';
+import ProjectAssignment from './models/projectAssignmentModel.js';
 
 async function seed() {
   try {
@@ -71,8 +73,24 @@ async function seed() {
     await Verification.create({
       administratorId: admin.id,
       professionalId: professional.id,
+      status: "Approved",
+      notes: "Verified by admin",
+    });
+
+    const project2 = await Project.create({
+      ownerId: owner.id,
+      title: 'Commercial Office Complex',
+      location: 'Mombasa, Kenya',
+      description: 'A 5-story commercial office building with underground parking.',
+      budget: '500000',
       status: 'Approved',
-      notes: 'Verified by admin',
+      startDate: '2025-03-01',
+    });
+
+    await ProjectAssignment.create({
+      projectId: project2.id,
+      professionalId: professional.id,
+      status: 'proposed',
     });
 
     console.log('Database seeded successfully!');

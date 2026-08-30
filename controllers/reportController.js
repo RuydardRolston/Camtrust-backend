@@ -1,6 +1,7 @@
 import ProgressReport from "../models/progressReportModel.js";
 import Project from "../models/projectModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
+import User from "../models/userModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 import { emitToProject } from "../utils/socket.js";
 

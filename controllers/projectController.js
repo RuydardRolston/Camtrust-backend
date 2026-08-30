@@ -1,7 +1,10 @@
 import Project from "../models/projectModel.js";
 import Milestone from "../models/milestoneModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
+import User from "../models/userModel.js";
+import Notification from "../models/notificationModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
+import { getIO, emitToUser } from "../utils/socket.js";
 
 export const createProject = async (req, res) => {
   try {
@@ -22,6 +25,16 @@ export const createProject = async (req, res) => {
       ownerId: req.user.userId,
       status: "Under Review",
     });
+
+    const admins = await User.findAll({ where: { role: "administrator" } });
+    for (const admin of admins) {
+      const notification = await Notification.create({
+        userId: admin.id,
+        message: `New project "${title}" submitted by ${req.user.userId} for review`,
+        status: "unread",
+      });
+      emitToUser(admin.id, "notification:new", notification);
+    }
 
     return res.status(201).json({ success: true, project });
   } catch (error) {
@@ -103,6 +116,17 @@ export const updateProjectStatus = async (req, res) => {
     }
 
     await project.save();
+
+    if (status === "Approved" || status === "Rejected") {
+      const notification = await Notification.create({
+        userId: project.ownerId,
+        message: `Your project "${project.title}" has been ${status.toLowerCase()}${rejectionReason ? `: ${rejectionReason}` : ''}`,
+        status: "unread",
+      });
+      emitToUser(project.ownerId, "notification:new", notification);
+
+      getIO().to(`user:${project.ownerId}`).emit("notification:new", notification);
+    }
 
     return res.status(200).json({ success: true, project });
   } catch (error) {

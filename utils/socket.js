@@ -5,7 +5,7 @@ let socketInstance = null;
 export const initSocket = (server) => {
   socketInstance = new Server(server, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],
+      origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:3000"],
       credentials: true,
     },
   });
@@ -17,6 +17,10 @@ export const initSocket = (server) => {
 
     socket.on("leave:project", (projectId) => {
       socket.leave(`project:${projectId}`);
+    });
+
+    socket.on("join:user", (userId) => {
+      socket.join(`user:${userId}`);
     });
 
     socket.on("disconnect", () => {
@@ -38,6 +42,15 @@ export const emitToProject = (projectId, event, data) => {
   try {
     const io = getIO();
     io.to(`project:${projectId}`).emit(event, data);
+  } catch (error) {
+    console.error(`Failed to emit ${event}:`, error.message);
+  }
+};
+
+export const emitToUser = (userId, event, data) => {
+  try {
+    const io = getIO();
+    io.to(`user:${userId}`).emit(event, data);
   } catch (error) {
     console.error(`Failed to emit ${event}:`, error.message);
   }

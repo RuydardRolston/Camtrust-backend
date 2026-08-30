@@ -3,7 +3,8 @@ import SiteEvidence from "../models/siteEvidenceModel.js";
 import Milestone from "../models/milestoneModel.js";
 import Project from "../models/projectModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
-import { authenticateToken } from "../middleware/authMiddleware.js";
+import User from "../models/userModel.js";
+import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 import { emitToProject } from "../utils/socket.js";
 
 const storage = multer.diskStorage({
@@ -75,6 +76,26 @@ export const uploadEvidence = async (req, res) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
+export const getAllEvidence = [
+  authenticateToken,
+  authorizeRoles("administrator"),
+  async (req, res) => {
+    try {
+      const evidenceList = await SiteEvidence.findAll({
+        include: [
+          { model: Milestone, as: "milestone", attributes: ["id", "label", "projectId"] },
+          { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified"] },
+        ],
+      });
+
+      return res.status(200).json({ success: true, evidence: evidenceList });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+];
 
 export const getEvidence = async (req, res) => {
   try {

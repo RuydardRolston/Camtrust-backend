@@ -2,7 +2,7 @@ import Verification from "../models/verificationModel.js";
 import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
-import { getIO } from "../utils/socket.js";
+import { getIO, emitToUser } from "../utils/socket.js";
 
 export const requestVerification = [
   authenticateToken,
@@ -82,6 +82,14 @@ export const approveVerification = [
         status: "unread",
       });
 
+      const notification = await Notification.findOne({
+        where: { userId: verification.professionalId },
+        order: [['id', 'DESC']],
+      });
+      if (notification) {
+        emitToUser(verification.professionalId, "notification:new", notification);
+      }
+
       getIO().to("global").emit("verification:updated", verification);
 
       return res.status(200).json({ success: true, verification });
@@ -112,6 +120,14 @@ export const rejectVerification = [
         message: "Your verification request has been rejected",
         status: "unread",
       });
+
+      const notification = await Notification.findOne({
+        where: { userId: verification.professionalId },
+        order: [['id', 'DESC']],
+      });
+      if (notification) {
+        emitToUser(verification.professionalId, "notification:new", notification);
+      }
 
       getIO().to("global").emit("verification:updated", verification);
 
