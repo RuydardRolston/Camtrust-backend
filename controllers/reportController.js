@@ -1,19 +1,35 @@
 import ProgressReport from "../models/progressReportModel.js";
 import Project from "../models/projectModel.js";
+import Milestone from "../models/milestoneModel.js";
+import SiteEvidence from "../models/siteEvidenceModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
 import User from "../models/userModel.js";
+import Notification from "../models/notificationModel.js";
+import Document from "../models/documentModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
-import { emitToProject } from "../utils/socket.js";
+import { emitToProject, emitToUser } from "../utils/socket.js";
 
 export const submitReport = [
   authenticateToken,
   authorizeRoles("professional"),
   async (req, res) => {
     try {
-      const { projectId, summary } = req.body;
+      const {
+        projectId,
+        milestoneId,
+        summary,
+        workCompleted,
+        workInProgress,
+        workRemaining,
+        observations,
+        issues,
+        recommendations,
+        progressPercentage,
+        pdfUrl
+      } = req.body;
 
-      if (!projectId || !summary) {
-        return res.status(400).json({ success: false, message: "Project ID and summary are required" });
+      if (!projectId) {
+        return res.status(400).json({ success: false, message: "Project ID is required" });
       }
 
       const project = await Project.findByPk(projectId);
@@ -21,29 +37,69 @@ export const submitReport = [
         return res.status(404).json({ success: false, message: "Project not found" });
       }
 
-      const isOwner = project.ownerId === req.user.userId;
-      const isAdmin = req.user.role === "administrator";
-
-      if (!isOwner && !isAdmin) {
-        const assignment = await ProjectAssignment.findOne({
-          where: { projectId, professionalId: req.user.userId },
+      // Check assignment: Only assigned verified engineer can submit
+      const assignment = await ProjectAssignment.findOne({
+        where: { projectId, professionalId: req.user.userId },
+      });
+      if (!assignment) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized: You are not assigned to this project.",
         });
-        if (!assignment) {
-          return res.status(403).json({ success: false, message: "Forbidden" });
+      }
+
+      let parsedMilestoneId = milestoneId ? parseInt(milestoneId) : null;
+      let parsedProgress = progressPercentage !== undefined && progressPercentage !== null ? parseInt(progressPercentage) : null;
+
+      // If milestone is specified, update milestone progress
+      if (parsedMilestoneId) {
+        const milestone = await Milestone.findByPk(parsedMilestoneId);
+        if (milestone && parsedProgress !== null) {
+          milestone.completionRate = parsedProgress;
+          milestone.status = parsedProgress >= 100 ? "Completed" : parsedProgress > 0 ? "In Progress" : "Pending";
+          await milestone.save();
+          emitToProject(projectId, "milestone:updated", milestone);
         }
       }
 
+      const engineer = await User.findByPk(req.user.userId);
+
       const report = await ProgressReport.create({
-        projectId,
+        projectId: parseInt(projectId),
         professionalId: req.user.userId,
-        summary,
+        milestoneId: parsedMilestoneId,
+        summary: summary || `Construction progress update (${parsedProgress || 0}% completion)`,
+        workCompleted: workCompleted || null,
+        workInProgress: workInProgress || null,
+        workRemaining: workRemaining || null,
+        observations: observations || null,
+        issues: issues || null,
+        recommendations: recommendations || null,
+        progressPercentage: parsedProgress,
+        pdfUrl: pdfUrl || null,
+        generatedAt: new Date(),
       });
 
-      emitToProject(projectId, "report:new", report);
+      const fullReport = await ProgressReport.findByPk(report.id, {
+        include: [
+          { model: Project, as: "project" },
+          { model: Milestone, as: "milestone" },
+          { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+        ],
+      });
 
-      return res.status(201).json({ success: true, report });
+      // Notify Project Owner
+      const notification = await Notification.create({
+        userId: project.ownerId,
+        message: `New official progress report submitted for "${project.title}" by ${engineer?.fullName || 'Verified Engineer'} (${parsedProgress || 0}% progress).`,
+        status: "unread",
+      });
+      emitToUser(project.ownerId, "notification:new", notification);
+      emitToProject(projectId, "report:new", fullReport);
+
+      return res.status(201).json({ success: true, report: fullReport });
     } catch (error) {
-      console.error(error);
+      console.error("Failed to submit report:", error);
       return res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
@@ -51,7 +107,7 @@ export const submitReport = [
 
 export const getProjectReports = async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const projectId = req.params.projectId || req.query.projectId;
 
     if (!projectId) {
       return res.status(400).json({ success: false, message: "Project ID is required" });
@@ -74,9 +130,63 @@ export const getProjectReports = async (req, res) => {
       }
     }
 
-    const reports = await ProgressReport.findAll({ where: { projectId } });
+    const reports = await ProgressReport.findAll({
+      where: { projectId },
+      include: [
+        { model: Milestone, as: "milestone" },
+        { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+        { model: Project, as: "project", attributes: ["id", "title", "location", "status", "budget", "startDate"] },
+      ],
+      order: [["generatedAt", "DESC"]],
+    });
 
     return res.status(200).json({ success: true, reports });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+export const getReportById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const report = await ProgressReport.findByPk(id, {
+      include: [
+        {
+          model: Project,
+          as: "project",
+          include: [{ model: User, as: "owner", attributes: ["id", "fullName", "email"] }],
+        },
+        { model: Milestone, as: "milestone" },
+        { model: User, as: "professional", attributes: ["id", "fullName", "email", "phone", "verified", "specialty"] },
+      ],
+    });
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: "Report not found" });
+    }
+
+    const isOwner = report.project?.ownerId === req.user.userId;
+    const isAdmin = req.user.role === "administrator";
+    const isAssigned = report.professionalId === req.user.userId;
+
+    if (!isOwner && !isAdmin && !isAssigned) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+
+    // Fetch related evidence and documents for the report
+    const evidence = await SiteEvidence.findAll({
+      where: { projectId: report.projectId },
+      order: [["capturedAt", "DESC"]],
+    });
+
+    const documents = await Document.findAll({
+      where: { projectId: report.projectId },
+      order: [["uploadedAt", "DESC"]],
+    });
+
+    return res.status(200).json({ success: true, report, evidence, documents });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: "Internal server error" });
@@ -97,7 +207,15 @@ export const getMyReports = async (req, res) => {
       whereCondition = { projectId: projectIds };
     }
 
-    const reports = await ProgressReport.findAll({ where: whereCondition });
+    const reports = await ProgressReport.findAll({
+      where: whereCondition,
+      include: [
+        { model: Project, as: "project", attributes: ["id", "title", "location"] },
+        { model: Milestone, as: "milestone" },
+        { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+      ],
+      order: [["generatedAt", "DESC"]],
+    });
 
     return res.status(200).json({ success: true, reports });
   } catch (error) {
@@ -113,9 +231,11 @@ export const getAllReports = [
     try {
       const reports = await ProgressReport.findAll({
         include: [
-          { model: Project, as: 'project', attributes: ['id', 'title'] },
-          { model: User, as: 'professional', attributes: ['id', 'fullName'] },
+          { model: Project, as: 'project', attributes: ['id', 'title', 'location'] },
+          { model: Milestone, as: 'milestone' },
+          { model: User, as: 'professional', attributes: ['id', 'fullName', 'email', 'verified', "specialty"] },
         ],
+        order: [["generatedAt", "DESC"]],
       });
 
       return res.status(200).json({ success: true, reports });

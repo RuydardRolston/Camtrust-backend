@@ -18,11 +18,17 @@ Milestone.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 Milestone.hasMany(SiteEvidence, { foreignKey: 'milestoneId', as: 'evidence', onDelete: 'CASCADE' });
 SiteEvidence.belongsTo(Milestone, { foreignKey: 'milestoneId', as: 'milestone' });
 
+Project.hasMany(SiteEvidence, { foreignKey: 'projectId', as: 'evidence', onDelete: 'CASCADE' });
+SiteEvidence.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
+
 User.hasMany(SiteEvidence, { foreignKey: 'professionalId', as: 'submittedEvidence' });
 SiteEvidence.belongsTo(User, { foreignKey: 'professionalId', as: 'professional' });
 
 Project.hasMany(ProgressReport, { foreignKey: 'projectId', as: 'reports', onDelete: 'CASCADE' });
 ProgressReport.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
+
+Milestone.hasMany(ProgressReport, { foreignKey: 'milestoneId', as: 'reports', onDelete: 'SET NULL' });
+ProgressReport.belongsTo(Milestone, { foreignKey: 'milestoneId', as: 'milestone' });
 
 User.hasMany(ProgressReport, { foreignKey: 'professionalId', as: 'submittedReports' });
 ProgressReport.belongsTo(User, { foreignKey: 'professionalId', as: 'professional' });

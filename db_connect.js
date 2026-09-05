@@ -17,6 +17,12 @@ export const connectDB = async () => {
 };
 
 export const syncDB = async () => {
-    await sequelize.sync({ force: false, alter: true });
-    console.log('Database synced');
+    try {
+        await sequelize.sync({ force: false, alter: true });
+        console.log('Database synced');
+    } catch (error) {
+        console.warn('Database alter sync failed; retrying without schema alteration to preserve existing MySQL structure.', error.message);
+        await sequelize.sync({ force: false, alter: false });
+        console.log('Database synced with non-altering strategy');
+    }
 };

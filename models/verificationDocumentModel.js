@@ -37,8 +37,12 @@ const VerificationDocument = sequelize.define("VerificationDocument", {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-            isIn: [["license", "certificate", "id_card", "other"]]
+            isIn: [["employment_attestation", "employment_certificate", "license", "certificate", "id_card", "registration", "other"]]
         }
+    },
+    analysis: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
     uploadedAt: {
         type: DataTypes.DATE,

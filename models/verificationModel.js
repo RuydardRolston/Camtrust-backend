@@ -9,12 +9,12 @@ const Verification = sequelize.define("Verification", {
     },
     administratorId: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
             model: "Users",
             key: "id"
         },
-        onDelete: "CASCADE"
+        onDelete: "SET NULL"
     },
     professionalId: {
         type: DataTypes.INTEGER,
@@ -30,13 +30,21 @@ const Verification = sequelize.define("Verification", {
         allowNull: false,
         defaultValue: "Pending",
         validate: {
-            isIn: [["Pending", "Approved", "Rejected"]]
+            isIn: [["Pending", "Under Review", "Approved", "Rejected", "Action Required"]]
         }
+    },
+    aiAnalysis: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
     date: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: Sequelize.NOW
+    },
+    reviewedAt: {
+        type: DataTypes.DATE,
+        allowNull: true
     },
     notes: {
         type: DataTypes.TEXT,

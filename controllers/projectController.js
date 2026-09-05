@@ -1,6 +1,9 @@
 import Project from "../models/projectModel.js";
 import Milestone from "../models/milestoneModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
+import SiteEvidence from "../models/siteEvidenceModel.js";
+import ProgressReport from "../models/progressReportModel.js";
+import Document from "../models/documentModel.js";
 import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
@@ -26,11 +29,30 @@ export const createProject = async (req, res) => {
       status: "Under Review",
     });
 
+    // Automatically create standard baseline milestones for construction monitoring
+    const standardMilestones = [
+      { label: "Site Preparation & Excavation", completionRate: 0, status: "Pending" },
+      { label: "Foundation & Footing Casting", completionRate: 0, status: "Pending" },
+      { label: "Substructure & Concrete Columns", completionRate: 0, status: "Pending" },
+      { label: "Superstructure, Beams & Slabs", completionRate: 0, status: "Pending" },
+      { label: "Roofing & External Enclosure", completionRate: 0, status: "Pending" },
+      { label: "Finishes, MEP & Final Inspection", completionRate: 0, status: "Pending" },
+    ];
+
+    for (const ms of standardMilestones) {
+      await Milestone.create({
+        projectId: project.id,
+        label: ms.label,
+        completionRate: ms.completionRate,
+        status: ms.status,
+      });
+    }
+
     const admins = await User.findAll({ where: { role: "administrator" } });
     for (const admin of admins) {
       const notification = await Notification.create({
         userId: admin.id,
-        message: `New project "${title}" submitted by ${req.user.userId} for review`,
+        message: `New construction project "${title}" submitted by Project Owner for review.`,
         status: "unread",
       });
       emitToUser(admin.id, "notification:new", notification);
@@ -45,7 +67,39 @@ export const createProject = async (req, res) => {
 
 export const getMyProjects = async (req, res) => {
   try {
-    const projects = await Project.findAll({ where: { ownerId: req.user.userId } });
+    let projects;
+    if (req.user.role === 'professional') {
+      const assignments = await ProjectAssignment.findAll({
+        where: { professionalId: req.user.userId },
+        include: [
+          {
+            model: Project,
+            as: 'project',
+            include: [
+              { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] },
+              { model: Milestone, as: 'milestones' },
+            ]
+          }
+        ]
+      });
+      projects = assignments.map(a => a.project).filter(Boolean);
+    } else {
+      projects = await Project.findAll({
+        where: { ownerId: req.user.userId },
+        include: [
+          { model: Milestone, as: 'milestones' },
+          {
+            model: ProjectAssignment,
+            as: 'assignments',
+            include: [
+              { model: User, as: 'professional', attributes: ['id', 'fullName', 'email', 'phone', 'specialty', 'verified'] }
+            ]
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+    }
+
     return res.status(200).json({ success: true, projects });
   } catch (error) {
     console.error(error);
@@ -57,37 +111,83 @@ export const getProjectById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const project = await Project.findByPk(id);
+    const project = await Project.findByPk(id, {
+      include: [
+        { model: User, as: "owner", attributes: ["id", "fullName", "email", "phone"] },
+        {
+          model: ProjectAssignment,
+          as: "assignments",
+          include: [
+            { model: User, as: "professional", attributes: ["id", "fullName", "email", "phone", "specialty", "verified", "employeeId"] }
+          ]
+        },
+        {
+          model: Milestone,
+          as: "milestones",
+        },
+        {
+          model: ProgressReport,
+          as: "reports",
+          include: [
+            { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+            { model: Milestone, as: "milestone" }
+          ]
+        },
+        {
+          model: SiteEvidence,
+          as: "evidence",
+          include: [
+            { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified"] },
+            { model: Milestone, as: "milestone" }
+          ]
+        },
+        {
+          model: Document,
+          as: "documents"
+        }
+      ]
+    });
+
     if (!project) {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
     const isOwner = project.ownerId === req.user.userId;
     const isAdmin = req.user.role === "administrator";
+    const isAssigned = (project.assignments || []).some(a => a.professionalId === req.user.userId);
 
-    if (!isOwner && !isAdmin) {
-      const assignment = await ProjectAssignment.findOne({
-        where: { projectId: id, professionalId: req.user.userId },
-      });
-      const isProfessional = req.user.role === "professional";
-
-      if (!assignment && !isProfessional) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
+    if (!isOwner && !isAdmin && !isAssigned) {
+      return res.status(403).json({ success: false, message: "Forbidden: You do not have access to this project." });
     }
 
-    const milestones = await Milestone.findAll({ where: { projectId: id } });
-
-    return res.status(200).json({ success: true, project, milestones });
+    return res.status(200).json({
+      success: true,
+      project,
+      milestones: project.milestones,
+      reports: project.reports,
+      evidence: project.evidence,
+      documents: project.documents
+    });
   } catch (error) {
-    console.error(error);
+    console.error("Failed to get project by id:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
 export const getAllProjects = async (req, res) => {
   try {
-    const projects = await Project.findAll();
+    const projects = await Project.findAll({
+      include: [
+        { model: User, as: "owner", attributes: ["id", "fullName", "email"] },
+        { model: Milestone, as: "milestones" },
+        {
+          model: ProjectAssignment,
+          as: "assignments",
+          include: [{ model: User, as: "professional", attributes: ["id", "fullName", "email", "verified"] }]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
     return res.status(200).json({ success: true, projects });
   } catch (error) {
     console.error(error);
@@ -120,11 +220,10 @@ export const updateProjectStatus = async (req, res) => {
     if (status === "Approved" || status === "Rejected") {
       const notification = await Notification.create({
         userId: project.ownerId,
-        message: `Your project "${project.title}" has been ${status.toLowerCase()}${rejectionReason ? `: ${rejectionReason}` : ''}`,
+        message: `Your project "${project.title}" has been ${status.toUpperCase()}${rejectionReason ? `: ${rejectionReason}` : ' by the administrator.'}`,
         status: "unread",
       });
       emitToUser(project.ownerId, "notification:new", notification);
-
       getIO().to(`user:${project.ownerId}`).emit("notification:new", notification);
     }
 
@@ -145,7 +244,7 @@ export const updateProject = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
-    if (project.ownerId !== req.user.userId) {
+    if (project.ownerId !== req.user.userId && req.user.role !== "administrator") {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 

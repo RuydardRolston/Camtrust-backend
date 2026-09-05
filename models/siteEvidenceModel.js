@@ -7,6 +7,15 @@ const SiteEvidence = sequelize.define("SiteEvidence", {
         autoIncrement: true,
         primaryKey: true
     },
+    projectId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: "Projects",
+            key: "id"
+        },
+        onDelete: "CASCADE"
+    },
     milestoneId: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -28,6 +37,14 @@ const SiteEvidence = sequelize.define("SiteEvidence", {
     photoUrl: {
         type: DataTypes.STRING,
         allowNull: false
+    },
+    description: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    deviceInfo: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
     capturedAt: {
         type: DataTypes.DATE,
