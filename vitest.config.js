@@ -13,5 +13,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    reporters: ['default', 'html'],
+    outputFile: { html: './test-report/index.html' },
   },
 });

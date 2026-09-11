@@ -58,10 +58,17 @@ describe('askAssistant access control', () => {
     ProgressReport.findOne.mockResolvedValue(null);
   });
 
-  it('returns 400 when projectId or question is missing', async () => {
+  it('returns 400 when question is missing', async () => {
     const res = mockRes();
-    await askAssistant(baseReq({ body: { question: 'x' } }), res);
+    await askAssistant(baseReq({ body: { projectId: 1 } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('allows requests without projectId (general knowledge)', async () => {
+    const res = mockRes();
+    await askAssistant(baseReq({ body: { question: 'What is concrete?' } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true, response: 'AI answer' });
   });
 
   it('returns 404 when the project does not exist', async () => {

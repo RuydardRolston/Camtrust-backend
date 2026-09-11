@@ -1,0 +1,131 @@
+@baseUrl = http://localhost:4000/api
+
+### 1. Register a new Project Owner
+POST {{baseUrl}}/users/signup
+Content-Type: application/json
+
+{
+  "fullName": "Jean Owner",
+  "email": "jean.owner@camtrust.test",
+  "password": "owner123",
+  "confirmPassword": "owner123",
+  "role": "property_owner"
+}
+
+### 2. Login as Owner (copy the "token" from the response for requests below)
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "jean.owner@camtrust.test",
+  "password": "owner123"
+}
+
+### 3. Login as Admin
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@camtrust.com",
+  "password": "admin123"
+}
+
+### 4. Login as Engineer
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+  "email": "engineer@camtrust.com",
+  "password": "engineer123"
+}
+
+### 5. Create a project as Owner (paste Owner token below)
+POST {{baseUrl}}/projects/create
+Content-Type: application/json
+Authorization: Bearer PASTE_OWNER_TOKEN_HERE
+
+{
+  "title": "Villa Construction - Yaounde",
+  "location": "Yaounde, Cameroon",
+  "description": "3-bedroom house construction",
+  "budget": "15000000",
+  "startDate": "2026-09-01"
+}
+
+### 6. Reject a project as Admin (paste Admin token + real project id from step 5's response)
+PUT {{baseUrl}}/projects/PROJECT_ID/status
+Content-Type: application/json
+Authorization: Bearer PASTE_ADMIN_TOKEN_HERE
+
+{
+  "status": "Rejected",
+  "rejectionReason": "Missing site plan"
+}
+
+### 7. Create a second project as Owner (this one we will approve instead)
+POST {{baseUrl}}/projects/create
+Content-Type: application/json
+Authorization: Bearer PASTE_OWNER_TOKEN_HERE
+
+{
+  "title": "Villa Construction - Douala",
+  "location": "Douala, Cameroon",
+  "description": "4-bedroom house construction",
+  "budget": "20000000",
+  "startDate": "2026-10-01"
+}
+
+### 8. Approve that project as Admin (use the project id from step 7)
+PUT {{baseUrl}}/projects/PROJECT_ID_2/status
+Content-Type: application/json
+Authorization: Bearer PASTE_ADMIN_TOKEN_HERE
+
+{
+  "status": "Approved"
+}
+
+### 9. Propose an engineer for the approved project (Admin) - professionalId 2 matches the seeded engineer
+POST {{baseUrl}}/assignments/propose
+Content-Type: application/json
+Authorization: Bearer PASTE_ADMIN_TOKEN_HERE
+
+{
+  "projectId": PROJECT_ID_2,
+  "professionalId": 2
+}
+
+### 10. Reject the assignment proposal as Owner (use assignment id from step 9's response)
+POST {{baseUrl}}/assignments/ASSIGNMENT_ID/reject
+Authorization: Bearer PASTE_OWNER_TOKEN_HERE
+
+### 11. Propose the engineer again (since the first proposal was rejected)
+POST {{baseUrl}}/assignments/propose
+Content-Type: application/json
+Authorization: Bearer PASTE_ADMIN_TOKEN_HERE
+
+{
+  "projectId": PROJECT_ID_2,
+  "professionalId": 2
+}
+
+### 12. Accept the new assignment proposal as Owner (use the NEW assignment id from step 11)
+POST {{baseUrl}}/assignments/ASSIGNMENT_ID_2/accept
+Authorization: Bearer PASTE_OWNER_TOKEN_HERE
+
+### 13. Submit a progress report as Engineer
+POST {{baseUrl}}/reports/submit
+Content-Type: application/json
+Authorization: Bearer PASTE_ENGINEER_TOKEN_HERE
+
+{
+  "projectId": "PROJECT_ID_2",
+  "summary": "Foundation work completed successfully."
+}
+
+### 14. Fetch notifications for Owner
+GET {{baseUrl}}/notifications
+Authorization: Bearer PASTE_OWNER_TOKEN_HERE
+
+### 15. Fetch verified professionals (Admin)
+GET {{baseUrl}}/users/professionals/verified
+Authorization: Bearer PASTE_ADMIN_TOKEN_HERE
