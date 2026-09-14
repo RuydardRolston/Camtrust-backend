@@ -2,6 +2,9 @@ vi.mock('sequelize', () => ({ Op: {} }));
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Set test API key so controller uses mocked fetch instead of fallback
+process.env.GEMINI_API_KEY = 'test-api-key';
+
 vi.mock('../models/projectModel.js', () => ({
   default: { findByPk: vi.fn() },
 }));
