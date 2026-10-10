@@ -7,6 +7,12 @@ import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 import { emitToProject, emitToUser } from "../utils/socket.js";
+import {
+  isValidCoordinate,
+  checkProjectGeofence,
+  checkTeleportation,
+  detectMockSignatures
+} from "../utils/geoSecurity.js";
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -31,7 +37,9 @@ export const uploadEvidence = async (req, res) => {
       projectId: incomingProjectId,
       gpsLatitude,
       gpsLongitude,
+      gpsAccuracy,
       gpsAvailable,
+      isMock,
       description,
       capturedAt,
       deviceInfo
@@ -52,24 +60,29 @@ export const uploadEvidence = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
-    const isOwner = project.ownerId === req.user.userId;
-    const isAdmin = req.user.role === "administrator";
-    const isEngineer = req.user.role === "professional";
+    if (req.user.role !== "professional") {
+      return res.status(403).json({
+        success: false,
+        message: "Only verified construction professionals can submit site evidence.",
+      });
+    }
 
-    if (!isAdmin) {
-      if (isEngineer) {
-        const assignment = await ProjectAssignment.findOne({
-          where: { projectId, professionalId: req.user.userId },
-        });
-        if (!assignment) {
-          return res.status(403).json({
-            success: false,
-            message: "Unauthorized: You are not assigned to this project.",
-          });
-        }
-      } else if (!isOwner) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
+    const professional = await User.findByPk(req.user.userId);
+    if (!professional?.verified) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account must be verified by an administrator before submitting site evidence.",
+      });
+    }
+
+    const assignment = await ProjectAssignment.findOne({
+      where: { projectId, professionalId: req.user.userId },
+    });
+    if (!assignment) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: You are not assigned to this project.",
+      });
     }
 
     if (!req.file) {
@@ -79,7 +92,48 @@ export const uploadEvidence = async (req, res) => {
     const photoUrl = "/uploads/" + req.file.filename;
     const lat = gpsLatitude !== undefined && gpsLatitude !== null && gpsLatitude !== "" ? parseFloat(gpsLatitude) : null;
     const lng = gpsLongitude !== undefined && gpsLongitude !== null && gpsLongitude !== "" ? parseFloat(gpsLongitude) : null;
-    const hasGps = gpsAvailable === "true" || gpsAvailable === true || (lat !== null && lng !== null);
+    const accuracy = gpsAccuracy !== undefined && gpsAccuracy !== null && gpsAccuracy !== "" ? parseFloat(gpsAccuracy) : null;
+    const hasValidCoords = lat !== null && lng !== null && isValidCoordinate(lat, lng);
+    const hasGps = (gpsAvailable === "true" || gpsAvailable === true || hasValidCoords) && hasValidCoords;
+
+    // --- Anti-Mock GPS & Geofencing Analysis ---
+    let isMockGps = false;
+    let mockSuspicionReasons = [];
+    let geofenceDistanceMeters = null;
+
+    if (hasGps) {
+      // 1. Signature check (synthetic accuracy / device mock flag)
+      const mockSignature = detectMockSignatures({ accuracy, isMockFlag: isMock });
+      if (mockSignature.isMockSuspicious) {
+        isMockGps = true;
+        mockSuspicionReasons.push(mockSignature.reason);
+      }
+
+      // 2. Teleportation / velocity check against previous evidence
+      const lastEvidence = await SiteEvidence.findOne({
+        where: { professionalId: req.user.userId, gpsAvailable: true },
+        order: [["capturedAt", "DESC"]],
+      });
+      const teleportationCheck = checkTeleportation(lastEvidence, lat, lng, capturedAt ? new Date(capturedAt) : new Date());
+      if (teleportationCheck.isTeleporting) {
+        isMockGps = true;
+        mockSuspicionReasons.push(teleportationCheck.reason);
+      }
+
+      // 3. Project Geofence validation
+      const geofenceCheck = checkProjectGeofence(project, lat, lng);
+      if (geofenceCheck.checked) {
+        geofenceDistanceMeters = geofenceCheck.distanceMeters;
+        if (!geofenceCheck.withinGeofence) {
+          isMockGps = true;
+          mockSuspicionReasons.push(
+            `Location is ${geofenceCheck.distanceMeters}m from registered site (allowed geofence perimeter: ${geofenceCheck.maxRadiusMeters}m).`
+          );
+        }
+      }
+    }
+
+    const mockReasonSummary = mockSuspicionReasons.length > 0 ? mockSuspicionReasons.join(" | ") : null;
 
     const evidence = await SiteEvidence.create({
       projectId,
@@ -92,22 +146,31 @@ export const uploadEvidence = async (req, res) => {
       gpsLatitude: lat,
       gpsLongitude: lng,
       gpsAvailable: hasGps,
+      gpsAccuracy: accuracy,
+      isMockGps,
+      mockSuspicionReason: mockReasonSummary,
+      geofenceDistanceMeters,
     });
 
     const populatedEvidence = await SiteEvidence.findByPk(evidence.id, {
       include: [
         { model: Milestone, as: "milestone", attributes: ["id", "label", "projectId"] },
         { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
-        { model: Project, as: "project", attributes: ["id", "title", "location"] },
+        { model: Project, as: "project", attributes: ["id", "title", "location", "latitude", "longitude", "geofenceRadiusMeters"] },
       ],
     });
 
     // Notify Project Owner
     if (project.ownerId !== req.user.userId) {
       const engineer = await User.findByPk(req.user.userId);
+      const alertPrefix = isMockGps ? "⚠️ [Location Warning] " : "";
+      const alertSuffix = isMockGps
+        ? ` Note: Geofence or Mock GPS flag detected (${mockReasonSummary}).`
+        : " GPS & timestamp verified on site.";
+
       const notification = await Notification.create({
         userId: project.ownerId,
-        message: `New verified site evidence photo recorded for "${project.title}" by ${engineer?.fullName || 'Engineer'}. GPS & timestamp recorded.`,
+        message: `${alertPrefix}New site evidence photo recorded for "${project.title}" by ${engineer?.fullName || 'Engineer'}.${alertSuffix}`,
         status: "unread",
       });
       emitToUser(project.ownerId, "notification:new", notification);
@@ -161,20 +224,34 @@ export const getProjectEvidence = async (req, res) => {
 
 export const getAllEvidence = [
   authenticateToken,
-  authorizeRoles("administrator"),
   async (req, res) => {
     try {
+      const include = [
+        {
+          model: Milestone,
+          as: "milestone",
+          attributes: ["id", "label", "projectId"],
+          include: [{ model: Project, as: "project", attributes: ["id", "title", "location"] }]
+        },
+        { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+        { model: Project, as: "project", attributes: ["id", "title", "location"] },
+      ];
+
+      let where = {};
+      if (req.user.role === "property_owner") {
+        const owned = await Project.findAll({ where: { ownerId: req.user.userId }, attributes: ["id"] });
+        where = { projectId: owned.map((p) => p.id) };
+      } else if (req.user.role === "professional") {
+        const assignments = await ProjectAssignment.findAll({
+          where: { professionalId: req.user.userId },
+          attributes: ["projectId"],
+        });
+        where = { projectId: assignments.map((a) => a.projectId) };
+      }
+
       const evidenceList = await SiteEvidence.findAll({
-        include: [
-          {
-            model: Milestone,
-            as: "milestone",
-            attributes: ["id", "label", "projectId"],
-            include: [{ model: Project, as: "project", attributes: ["id", "title", "location"] }]
-          },
-          { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
-          { model: Project, as: "project", attributes: ["id", "title", "location"] },
-        ],
+        where,
+        include,
         order: [["capturedAt", "DESC"]],
       });
 

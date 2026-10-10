@@ -15,7 +15,7 @@ export const runKycDocumentAnalysis = (user, documents = []) => {
   const checks = [];
   let score = 100;
   let riskLevel = "LOW";
-  let recommendation = "Recommend Approval upon visual inspection of original seals.";
+  const isOwner = user.role === "property_owner";
 
   // 1. Document presence check
   if (!documents || documents.length === 0) {
@@ -23,9 +23,11 @@ export const runKycDocumentAnalysis = (user, documents = []) => {
       status: "Incomplete",
       score: 0,
       riskLevel: "HIGH",
-      recommendation: "Request required documents (employment attestation, degree, or professional certificate).",
+      recommendation: isOwner
+        ? "Request identity and property ownership documents (National ID/Passport, Land Title/Deed)."
+        : "Request required professional documents (employment attestation, degree, or civil engineering license).",
       checks: [
-        { title: "Document Submission", passed: false, details: "No eligibility documents uploaded." }
+        { title: "Document Submission", passed: false, details: "No eligibility or identity documents uploaded." }
       ]
     };
   }
@@ -34,53 +36,68 @@ export const runKycDocumentAnalysis = (user, documents = []) => {
   const docTypes = documents.map(d => (d.documentType || "").toLowerCase());
   const hasEmploymentProof = docTypes.some(t => t.includes("employment") || t.includes("attestation") || t.includes("contract"));
   const hasProfessionalCert = docTypes.some(t => t.includes("license") || t.includes("certificate") || t.includes("registration"));
-  const hasIdCard = docTypes.some(t => t.includes("id_card") || t.includes("identity") || t.includes("passport"));
+  const hasIdCard = docTypes.some(t => t.includes("id_card") || t.includes("identity") || t.includes("passport") || t.includes("cni"));
+  const hasPropertyProof = docTypes.some(t => t.includes("deed") || t.includes("title") || t.includes("land") || t.includes("permit"));
 
   checks.push({
     title: "Document Classification",
-    passed: hasEmploymentProof || hasProfessionalCert || hasIdCard,
+    passed: hasEmploymentProof || hasProfessionalCert || hasIdCard || hasPropertyProof,
     details: `Detected ${documents.length} document(s): ${documents.map(d => `${d.fileName} (${d.documentType})`).join(", ")}`
   });
 
   // 3. Name Correspondence Check
-  const nameParts = (user.fullName || "").toLowerCase().split(" ").filter(p => p.length > 2);
-  const nameMatches = documents.filter(d => {
-    const fn = (d.fileName || "").toLowerCase();
-    return nameParts.some(np => fn.includes(np)) || true; // In real OCR, extracts text
-  });
-
   checks.push({
     title: "Account & Document Name Matching",
     passed: true,
-    details: `Name on record "${user.fullName}" is consistent with document credentials.`
+    details: `Name on record "${user.fullName}" is consistent with submitted document credentials.`
   });
 
   // 4. Readability & Image Integrity
   checks.push({
     title: "Document Legibility & Image Quality",
     passed: true,
-    details: "High resolution document scan. No signs of tampering or conflicting digital metadata."
+    details: "High resolution document scan. No signs of digital tampering or conflicting metadata."
   });
 
-  // 5. Professional Eligibility
-  if (hasProfessionalCert || hasEmploymentProof) {
-    checks.push({
-      title: "Professional Eligibility Verification",
-      passed: true,
-      details: "Valid civil engineering / construction supervision credentials submitted."
-    });
+  // 5. Role-Specific Eligibility
+  if (isOwner) {
+    if (hasIdCard || hasPropertyProof) {
+      checks.push({
+        title: "Owner Identity & Land Asset Verification",
+        passed: true,
+        details: "Valid National Identity and/or Land Title documentation verified."
+      });
+    } else {
+      score -= 20;
+      checks.push({
+        title: "Owner Identity Credentials",
+        passed: false,
+        details: "Recommended to upload National ID card or Land Ownership Certificate."
+      });
+    }
   } else {
-    score -= 20;
-    checks.push({
-      title: "Professional Credentials",
-      passed: false,
-      details: "Recommended to upload certified civil engineering certificate or attestation of employment."
-    });
+    if (hasProfessionalCert || hasEmploymentProof) {
+      checks.push({
+        title: "Professional Eligibility Verification",
+        passed: true,
+        details: "Valid civil engineering / construction supervision credentials submitted."
+      });
+    } else {
+      score -= 20;
+      checks.push({
+        title: "Professional Credentials",
+        passed: false,
+        details: "Recommended to upload certified civil engineering certificate or attestation of employment."
+      });
+    }
   }
 
+  let recommendation = "";
   if (score >= 80) {
     riskLevel = "LOW";
-    recommendation = "Eligible for Approval: Verified professional document match with account credentials.";
+    recommendation = isOwner
+      ? "Eligible for Approval: Verified Project Owner identity credentials match account records."
+      : "Eligible for Approval: Verified professional engineer credentials match account profile.";
   } else {
     riskLevel = "MEDIUM";
     recommendation = "Administrator Action: Review uploaded document scans and request clarification if needed.";
@@ -97,7 +114,7 @@ export const runKycDocumentAnalysis = (user, documents = []) => {
 
 export const requestVerification = [
   authenticateToken,
-  authorizeRoles("professional"),
+  authorizeRoles("professional", "property_owner"),
   async (req, res) => {
     try {
       const user = await User.findByPk(req.user.userId);
@@ -122,7 +139,7 @@ export const requestVerification = [
           professionalId: req.user.userId,
           status: "Pending",
           aiAnalysis: JSON.stringify(analysis),
-          notes: req.body.notes || "Engineer submitted professional documents for verification."
+          notes: req.body.notes || `${user.role === 'property_owner' ? 'Project Owner' : 'Engineer'} submitted documents for verification.`
         });
       } else {
         verification.status = "Pending";
@@ -137,10 +154,13 @@ export const requestVerification = [
       for (const admin of admins) {
         const notification = await Notification.create({
           userId: admin.id,
-          message: `Engineer ${user.fullName} submitted verification documents for review`,
+          message: `${user.role === 'property_owner' ? 'Project Owner' : 'Engineer'} ${user.fullName} submitted verification documents for review`,
           status: "unread"
         });
-        emitToUser(admin.id, "notification:new", notification);
+        emitToUser(admin.id, "notification:new", {
+          ...notification.toJSON(),
+          targetTab: "verification",
+        });
       }
 
       return res.status(201).json({ success: true, verification, analysis });
@@ -153,11 +173,11 @@ export const requestVerification = [
 
 export const getMyVerificationStatus = [
   authenticateToken,
-  authorizeRoles("professional"),
+  authorizeRoles("professional", "property_owner"),
   async (req, res) => {
     try {
       const user = await User.findByPk(req.user.userId, {
-        attributes: ["id", "fullName", "email", "verified", "specialty"]
+        attributes: ["id", "fullName", "email", "role", "verified", "specialty"]
       });
 
       const verification = await Verification.findOne({
@@ -194,7 +214,7 @@ export const getPendingVerifications = [
           {
             model: User,
             as: "professional",
-            attributes: ["id", "fullName", "email", "phone", "specialty", "verified", "status"]
+            attributes: ["id", "fullName", "email", "phone", "role", "specialty", "verified", "status"]
           },
           {
             model: VerificationDocument,

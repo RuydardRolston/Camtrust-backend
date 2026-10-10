@@ -9,7 +9,7 @@ import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.
 
 const assignmentProposalRouter = express.Router();
 
-assignmentProposalRouter.post("/propose", authenticateToken, authorizeRoles("administrator"), proposeProfessional);
+assignmentProposalRouter.post("/propose", authenticateToken, authorizeRoles("administrator", "professional"), proposeProfessional);
 assignmentProposalRouter.post("/:id/accept", authenticateToken, acceptAssignment);
 assignmentProposalRouter.post("/:id/reject", authenticateToken, rejectAssignment);
 assignmentProposalRouter.get("/pending", authenticateToken, getPendingAssignments);

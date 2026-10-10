@@ -8,9 +8,27 @@ import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 import { getIO, emitToUser } from "../utils/socket.js";
+import multer from "multer";
+
+// Multer storage for feasibility documents uploaded at project creation
+const feasibilityStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+export const feasibilityUpload = multer({
+  storage: feasibilityStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+}).array("feasibilityDocs", 10);
 
 export const createProject = async (req, res) => {
   try {
+    if (req.user.role !== "property_owner") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only Project Owners are authorized to create construction projects. Engineers submit proposals.",
+      });
+    }
+
     const { title, location, description, budget, startDate, estimatedDuration, estimatedEndDate } = req.body;
 
     if (!title || !location) {
@@ -48,17 +66,37 @@ export const createProject = async (req, res) => {
       });
     }
 
+    // Save any feasibility documents uploaded with the project
+    const uploadedFiles = req.files || [];
+    const savedDocs = [];
+    for (const file of uploadedFiles) {
+      const fileCategory = req.body[`docCategory_${file.fieldname}_${file.originalname}`] || "Feasibility";
+      const doc = await Document.create({
+        projectId: project.id,
+        uploadedByUserId: req.user.userId,
+        fileName: file.originalname,
+        fileUrl: "/uploads/" + file.filename,
+        category: fileCategory,
+      });
+      savedDocs.push(doc);
+    }
+
     const admins = await User.findAll({ where: { role: "administrator" } });
+    const docCount = uploadedFiles.length;
     for (const admin of admins) {
       const notification = await Notification.create({
         userId: admin.id,
-        message: `New construction project "${title}" submitted by Project Owner for review.`,
+        message: `New construction project "${title}" submitted by Project Owner for feasibility review.${docCount > 0 ? ` (${docCount} feasibility document(s) attached)` : ""}`,
         status: "unread",
       });
-      emitToUser(admin.id, "notification:new", notification);
+      emitToUser(admin.id, "notification:new", {
+        ...notification.toJSON(),
+        targetTab: "projects",
+        projectId: project.id,
+      });
     }
 
-    return res.status(201).json({ success: true, project });
+    return res.status(201).json({ success: true, project, feasibilityDocs: savedDocs });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: "Internal server error" });
@@ -68,7 +106,24 @@ export const createProject = async (req, res) => {
 export const getMyProjects = async (req, res) => {
   try {
     let projects;
-    if (req.user.role === 'professional') {
+    const isAdmin = req.user.role === 'administrator' || req.user.role === 'admin';
+
+    if (isAdmin) {
+      projects = await Project.findAll({
+        include: [
+          { model: Milestone, as: 'milestones' },
+          { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] },
+          {
+            model: ProjectAssignment,
+            as: 'assignments',
+            include: [
+              { model: User, as: 'professional', attributes: ['id', 'fullName', 'email', 'phone', 'specialty', 'verified'] }
+            ]
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+    } else if (req.user.role === 'professional') {
       const assignments = await ProjectAssignment.findAll({
         where: { professionalId: req.user.userId },
         include: [

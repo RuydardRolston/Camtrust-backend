@@ -113,38 +113,52 @@ User Query: ${userQuery}`;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey || apiKey === "mock_key") {
-      const fallback = getFallbackResponse(userQuery);
-      return res.status(200).json({ success: true, response: fallback });
-    }
-
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-          }),
-          redirect: "follow",
-        }
-      );
-
-      if (!response.ok) {
-        console.warn("Gemini API returned status:", response.status);
-        const fallback = getFallbackResponse(userQuery);
-        return res.status(200).json({ success: true, response: fallback });
+      const q = userQuery.toLowerCase();
+      if ((q.includes("summar") || q.includes("progress report") || q.includes("latest update")) && projectContext) {
+        return res.status(200).json({
+          success: true,
+          response: `Here is a concise summary of the selected construction project:${projectContext}\n\n*Note: For safety-critical construction decisions, always consult a qualified on-site civil engineer.*`,
+        });
       }
-
-      const data = await response.json();
-      const aiMessage = data.candidates?.[0]?.content?.parts?.[0]?.text || getFallbackResponse(userQuery);
-
-      return res.status(200).json({ success: true, response: aiMessage });
-    } catch (fetchError) {
-      console.warn("Gemini request error, using fallback:", fetchError.message);
       const fallback = getFallbackResponse(userQuery);
       return res.status(200).json({ success: true, response: fallback });
     }
+
+    const modelsToTry = [
+      process.env.GEMINI_MODEL || "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-flash-latest",
+    ];
+
+    for (const model of modelsToTry) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: systemPrompt }] }],
+            }),
+            redirect: "follow",
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const aiMessage = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (aiMessage) {
+            return res.status(200).json({ success: true, response: aiMessage });
+          }
+        }
+      } catch (err) {
+        console.warn(`Gemini model ${model} failed, trying next:`, err.message);
+      }
+    }
+
+    // High quality construction fallback
+    const fallback = getFallbackResponse(userQuery);
+    return res.status(200).json({ success: true, response: fallback });
   } catch (error) {
     console.error("AI controller error:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });

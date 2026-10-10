@@ -1,8 +1,40 @@
 import Milestone from "../models/milestoneModel.js";
 import Project from "../models/projectModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
+import User from "../models/userModel.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 import { emitToProject } from "../utils/socket.js";
+
+const assertCanMutateMilestones = async (req, res, projectId) => {
+  if (req.user.role === "administrator") return true;
+
+  if (req.user.role !== "professional") {
+    res.status(403).json({
+      success: false,
+      message: "Only verified construction professionals can create or update milestones.",
+    });
+    return false;
+  }
+
+  const professional = await User.findByPk(req.user.userId);
+  if (!professional?.verified) {
+    res.status(403).json({
+      success: false,
+      message: "Your account must be verified by an administrator before updating milestones.",
+    });
+    return false;
+  }
+
+  const assignment = await ProjectAssignment.findOne({
+    where: { projectId, professionalId: req.user.userId },
+  });
+  if (!assignment) {
+    res.status(403).json({ success: false, message: "Forbidden: you are not assigned to this project." });
+    return false;
+  }
+
+  return true;
+};
 
 export const createMilestone = async (req, res) => {
   try {
@@ -17,17 +49,8 @@ export const createMilestone = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
-    const isOwner = project.ownerId === req.user.userId;
-    const isAdmin = req.user.role === "administrator";
-
-    if (!isOwner && !isAdmin) {
-      const assignment = await ProjectAssignment.findOne({
-        where: { projectId, professionalId: req.user.userId },
-      });
-      if (!assignment || req.user.role !== "professional") {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
-    }
+    const allowed = await assertCanMutateMilestones(req, res, projectId);
+    if (!allowed) return;
 
     const milestone = await Milestone.create({
       projectId,
@@ -61,17 +84,8 @@ export const updateMilestone = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
-    const isOwner = project.ownerId === req.user.userId;
-    const isAdmin = req.user.role === "administrator";
-
-    if (!isOwner && !isAdmin) {
-      const assignment = await ProjectAssignment.findOne({
-        where: { projectId: milestone.projectId, professionalId: req.user.userId },
-      });
-      if (!assignment || req.user.role !== "professional") {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
-    }
+    const allowed = await assertCanMutateMilestones(req, res, milestone.projectId);
+    if (!allowed) return;
 
     if (label !== undefined) milestone.label = label;
     if (plannedDate !== undefined) milestone.plannedDate = plannedDate;

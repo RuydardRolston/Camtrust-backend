@@ -1,11 +1,9 @@
 import ProgressReport from "../models/progressReportModel.js";
 import Project from "../models/projectModel.js";
 import Milestone from "../models/milestoneModel.js";
-import SiteEvidence from "../models/siteEvidenceModel.js";
 import ProjectAssignment from "../models/projectAssignmentModel.js";
 import User from "../models/userModel.js";
 import Notification from "../models/notificationModel.js";
-import Document from "../models/documentModel.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 import { emitToProject, emitToUser } from "../utils/socket.js";
 
@@ -37,7 +35,14 @@ export const submitReport = [
         return res.status(404).json({ success: false, message: "Project not found" });
       }
 
-      // Check assignment: Only assigned verified engineer can submit
+      const engineerAccount = await User.findByPk(req.user.userId);
+      if (!engineerAccount?.verified) {
+        return res.status(403).json({
+          success: false,
+          message: "Your account must be verified by an administrator before submitting progress reports.",
+        });
+      }
+
       const assignment = await ProjectAssignment.findOne({
         where: { projectId, professionalId: req.user.userId },
       });
@@ -242,6 +247,95 @@ export const getAllReports = [
     } catch (error) {
       console.error(error);
       return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+];
+
+/**
+ * In-app report delivery: instead of emailing, the report is delivered to the
+ * project owner as a direct message + notification inside the application.
+ * Works in both directions: engineer -> owner and owner -> engineer.
+ */
+export const sendReportToOwner = [
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const senderId = req.user.userId;
+
+      const report = await ProgressReport.findByPk(id, {
+        include: [
+          {
+            model: Project,
+            as: "project",
+            include: [{ model: User, as: "owner", attributes: ["id", "fullName", "email"] }],
+          },
+          { model: Milestone, as: "milestone" },
+          { model: User, as: "professional", attributes: ["id", "fullName", "email", "verified", "specialty"] },
+        ],
+      });
+
+      if (!report) {
+        return res.status(404).json({ success: false, message: "Report not found" });
+      }
+
+      const isOwner = report.project?.ownerId === senderId;
+      const isAssigned = report.professionalId === senderId;
+      const isAdmin = req.user.role === "administrator";
+      if (!isOwner && !isAssigned && !isAdmin) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
+
+      // In-app recipient: owner sends to the engineer, engineer sends to the owner.
+      const recipientId = isOwner ? report.professionalId : report.project?.ownerId;
+      if (!recipientId || recipientId === senderId) {
+        return res.status(400).json({ success: false, message: "No in-app recipient for this report" });
+      }
+
+      const recipient = await User.findByPk(recipientId, { attributes: ["id", "fullName"] });
+
+      const summaryText =
+        `📋 Progress Report — "${report.project?.title || "Construction Project"}"\n` +
+        `Overall progress: ${report.progressPercentage ?? 0}%\n` +
+        (report.milestone?.label ? `Milestone: ${report.milestone.label}\n` : "") +
+        (report.summary ? `\n${report.summary}` : "");
+
+      const message = await Message.create({
+        senderId,
+        receiverId: recipientId,
+        projectId: report.projectId,
+        body: summaryText,
+      });
+
+      const payload = {
+        ...message.toJSON(),
+        reportId: report.id,
+        sender: { id: senderId, fullName: req.user.fullName || null },
+      };
+
+      emitToUser(recipientId, "message:new", payload);
+      emitToUser(senderId, "message:sent", payload);
+
+      const notification = await Notification.create({
+        userId: recipientId,
+        message: `Progress report for "${report.project?.title}" was shared with you in-app by ${req.user.fullName || "a project member"}.`,
+        status: "unread",
+      });
+      emitToUser(recipientId, "notification:new", {
+        ...notification.toJSON(),
+        targetTab: "messages",
+        partnerId: senderId,
+        reportId: report.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Report delivered in-app to ${recipient?.fullName || "recipient"}`,
+        reportId: report.id,
+      });
+    } catch (error) {
+      console.error("Failed to deliver report in-app:", error);
+      return res.status(500).json({ success: false, message: "Failed to deliver report: " + error.message });
     }
   },
 ];

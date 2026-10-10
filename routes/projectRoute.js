@@ -7,12 +7,13 @@ import {
   updateProjectStatus,
   updateProject,
   deleteProject,
+  feasibilityUpload,
 } from "../controllers/projectController.js";
 import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
 
 const projectRouter = express.Router();
 
-projectRouter.post("/create", authenticateToken, createProject);
+projectRouter.post("/create", authenticateToken, authorizeRoles("property_owner"), feasibilityUpload, createProject);
 projectRouter.get("/my", authenticateToken, getMyProjects);
 projectRouter.get("/all", authenticateToken, authorizeRoles("administrator"), getAllProjects);
 projectRouter.get("/:id", authenticateToken, getProjectById);
@@ -21,3 +22,4 @@ projectRouter.put("/:id/status", authenticateToken, authorizeRoles("administrato
 projectRouter.delete("/:id", authenticateToken, deleteProject);
 
 export default projectRouter;
+

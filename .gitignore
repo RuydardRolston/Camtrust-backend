@@ -148,3 +148,7 @@ dist/
 # Vitest
 vitest.config.mts.timestamp-*
 vitest.config.js.timestamp-*
+test-report/
+check_db.js
+check_db.mjs
+scripts/test-gemini.mjs

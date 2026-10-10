@@ -6,5 +6,6 @@ const adminRouter = express.Router();
 
 adminRouter.get("/stats", getPlatformStats);
 adminRouter.put("/users/:id/status", toggleUserStatus);
+adminRouter.patch("/users/:id/status", toggleUserStatus);
 
 export default adminRouter;

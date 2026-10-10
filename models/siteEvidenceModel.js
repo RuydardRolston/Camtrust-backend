@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const SiteEvidence = sequelize.define("SiteEvidence", {
     id: {
@@ -49,7 +49,7 @@ const SiteEvidence = sequelize.define("SiteEvidence", {
     capturedAt: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     },
     gpsLatitude: {
         type: DataTypes.FLOAT,
@@ -63,6 +63,23 @@ const SiteEvidence = sequelize.define("SiteEvidence", {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false
+    },
+    gpsAccuracy: {
+        type: DataTypes.FLOAT,
+        allowNull: true
+    },
+    isMockGps: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    mockSuspicionReason: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    geofenceDistanceMeters: {
+        type: DataTypes.FLOAT,
+        allowNull: true
     }
 });
 

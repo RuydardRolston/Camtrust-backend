@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const Document = sequelize.define("Document", {
     id: {
@@ -37,10 +37,38 @@ const Document = sequelize.define("Document", {
         type: DataTypes.STRING,
         allowNull: false
     },
+    targetRecipient: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "all",
+        comment: "property_owner | administrator | both | all"
+    },
+    recipientUserId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: "Users",
+            key: "id"
+        },
+        onDelete: "SET NULL"
+    },
+    recipientName: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    notes: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    status: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "sent"
+    },
     uploadedAt: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     }
 });
 

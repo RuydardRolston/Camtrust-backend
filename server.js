@@ -18,6 +18,7 @@ import assignmentRouter from './routes/assignmentRoute.js';
 import assignmentProposalRouter from './routes/assignmentProposalRoute.js';
 import aiRouter from './routes/aiRoute.js';
 import adminRouter from './routes/adminRoute.js';
+import messageRouter from './routes/messageRoute.js';
 
 dotenv.config();
 
@@ -28,9 +29,11 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://localhost:5175',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
+    'http://127.0.0.1:5175',
     'http://127.0.0.1:3000'
   ],
   credentials: true,
@@ -38,8 +41,16 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+}, express.static('uploads'));
 
 app.use('/api/users', userRouter);
 app.use('/api/projects', projectRouter);
@@ -54,9 +65,19 @@ app.use('/api/assignments', assignmentRouter);
 app.use('/api/assignments', assignmentProposalRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/messages', messageRouter);
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'CamTrust API is running' });
+});
+
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled server error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+  });
 });
 
 const startServer = async () => {
@@ -76,8 +97,6 @@ const startServer = async () => {
   }
 };
 
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` || process.argv[1]?.endsWith('server.js')) {
-  startServer();
-}
+startServer();
 
 export { app, startServer };

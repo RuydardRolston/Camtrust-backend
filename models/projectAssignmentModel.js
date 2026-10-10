@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const ProjectAssignment = sequelize.define("ProjectAssignment", {
     id: {
@@ -28,7 +28,7 @@ const ProjectAssignment = sequelize.define("ProjectAssignment", {
     assignedAt: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     },
     status: {
         type: DataTypes.STRING,

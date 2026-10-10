@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const VerificationDocument = sequelize.define("VerificationDocument", {
     id: {
@@ -47,7 +47,7 @@ const VerificationDocument = sequelize.define("VerificationDocument", {
     uploadedAt: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     }
 });
 

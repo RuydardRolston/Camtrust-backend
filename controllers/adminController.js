@@ -54,7 +54,7 @@ export const toggleUserStatus = [
   authorizeRoles("administrator"),
   async (req, res) => {
     try {
-      const { userId } = req.params;
+      const userId = req.params.id || req.params.userId;
       const { status } = req.body;
 
       if (!["active", "inactive"].includes(status)) {

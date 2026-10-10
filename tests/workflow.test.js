@@ -79,11 +79,27 @@ describe('CamTrust API Workflow', () => {
     adminToken = res.data.token;
   });
 
-  it('logs in as engineer', async () => {
+  it('registers and logs in as engineer', async () => {
+    const email = emailFor('engineer');
+    const signupRes = await request('/users/signup', {
+      method: 'POST',
+      body: JSON.stringify({
+        fullName: 'Eng. Test Engineer',
+        email,
+        password: 'engineer123',
+        confirmPassword: 'engineer123',
+        role: 'professional',
+        specialty: 'Civil Engineering',
+      }),
+    });
+
+    expect(signupRes.status).toBe(201);
+    expect(signupRes.data.success).toBe(true);
+
     const res = await request('/users/login', {
       method: 'POST',
       body: JSON.stringify({
-        email: 'engineer@camtrust.com',
+        email,
         password: 'engineer123',
       }),
     });
@@ -93,6 +109,22 @@ describe('CamTrust API Workflow', () => {
     expect(res.data.user.role).toBe('professional');
     engineerToken = res.data.token;
     engineerId = res.data.user.id;
+
+    const verifReq = await request('/verifications/request', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${engineerToken}`,
+      },
+    });
+    expect(verifReq.status).toBe(201);
+
+    const approveVerif = await request(`/verifications/${verifReq.data.verification.id}/approve`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+    });
+    expect(approveVerif.status).toBe(200);
   });
 
   it('creates a project as owner', async () => {

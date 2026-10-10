@@ -13,6 +13,6 @@ const evidenceRouter = express.Router();
 evidenceRouter.post("/upload", authenticateToken, uploadEvidenceMiddleware, uploadEvidence);
 evidenceRouter.get("/", authenticateToken, getEvidence);
 evidenceRouter.get("/project/:projectId", authenticateToken, getProjectEvidence);
-evidenceRouter.get("/all", authenticateToken, authorizeRoles("administrator"), getAllEvidence);
+evidenceRouter.get("/all", authenticateToken, getAllEvidence);
 
 export default evidenceRouter;

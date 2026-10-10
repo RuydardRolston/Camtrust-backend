@@ -1,5 +1,4 @@
 import Notification from "../models/notificationModel.js";
-import { authenticateToken } from "../middleware/authMiddleware.js";
 
 export const getMyNotifications = async (req, res) => {
   try {

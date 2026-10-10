@@ -8,6 +8,7 @@ import Verification from './verificationModel.js';
 import VerificationDocument from './verificationDocumentModel.js';
 import Notification from './notificationModel.js';
 import ProjectAssignment from './projectAssignmentModel.js';
+import Message from './messageModel.js';
 
 User.hasMany(Project, { foreignKey: 'ownerId', as: 'ownedProjects' });
 Project.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
@@ -39,6 +40,9 @@ Document.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 User.hasMany(Document, { foreignKey: 'uploadedByUserId', as: 'uploadedDocuments' });
 Document.belongsTo(User, { foreignKey: 'uploadedByUserId', as: 'uploadedBy' });
 
+User.hasMany(Document, { foreignKey: 'recipientUserId', as: 'receivedDocuments' });
+Document.belongsTo(User, { foreignKey: 'recipientUserId', as: 'recipientUser' });
+
 User.hasMany(Verification, { foreignKey: 'administratorId', as: 'adminVerifications' });
 Verification.belongsTo(User, { foreignKey: 'administratorId', as: 'administrator' });
 
@@ -59,3 +63,9 @@ ProjectAssignment.belongsTo(Project, { foreignKey: 'projectId', as: 'project' })
 
 User.hasMany(ProjectAssignment, { foreignKey: 'professionalId', as: 'projectAssignments' });
 ProjectAssignment.belongsTo(User, { foreignKey: 'professionalId', as: 'professional' });
+
+User.hasMany(Message, { foreignKey: 'senderId', as: 'sentMessages', onDelete: 'CASCADE' });
+User.hasMany(Message, { foreignKey: 'receiverId', as: 'receivedMessages', onDelete: 'CASCADE' });
+Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
+Message.belongsTo(User, { foreignKey: 'receiverId', as: 'receiver' });
+Message.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });

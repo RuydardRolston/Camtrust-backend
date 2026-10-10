@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const Notification = sequelize.define("Notification", {
     id: {
@@ -23,7 +23,7 @@ const Notification = sequelize.define("Notification", {
     date: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     },
     status: {
         type: DataTypes.STRING,

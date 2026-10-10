@@ -7,10 +7,15 @@ import { emitToProject, emitToUser } from "../utils/socket.js";
 
 export const proposeProfessional = [
   authenticateToken,
-  authorizeRoles("administrator"),
+  authorizeRoles("administrator", "professional"),
   async (req, res) => {
     try {
-      const { projectId, professionalId } = req.body;
+      let { projectId, professionalId } = req.body;
+
+      // If submitted by engineer directly
+      if (req.user.role === "professional") {
+        professionalId = req.user.userId;
+      }
 
       if (!projectId || !professionalId) {
         return res.status(400).json({ success: false, message: "Project ID and professional ID are required" });
@@ -24,10 +29,6 @@ export const proposeProfessional = [
       const professional = await User.findByPk(professionalId);
       if (!professional || professional.role !== "professional") {
         return res.status(404).json({ success: false, message: "Professional not found" });
-      }
-
-      if (!professional.verified) {
-        return res.status(400).json({ success: false, message: "Professional is not verified" });
       }
 
       const existing = await ProjectAssignment.findOne({
@@ -48,10 +49,14 @@ export const proposeProfessional = [
 
       const notification = await Notification.create({
         userId: project.ownerId,
-        message: `An engineer has been proposed for your project "${project.title}". Please review and accept or reject.`,
+        message: `Engineer ${professional.fullName} submitted a proposal for your project "${project.title}". Please review and accept or reject.`,
         status: "unread",
       });
-      emitToUser(project.ownerId, "notification:new", notification);
+      emitToUser(project.ownerId, "notification:new", {
+        ...notification.toJSON(),
+        targetTab: "proposals",
+        projectId: parseInt(projectId, 10),
+      });
 
       emitToProject(projectId, "project:updated", assignment);
 
@@ -84,25 +89,28 @@ export const acceptAssignment = async (req, res) => {
     assignment.status = "accepted";
     await assignment.save();
 
+    project.status = "In Progress";
+    await project.save();
+
     const professional = await User.findByPk(assignment.professionalId);
 
     const ownerNotification = await Notification.create({
       userId: project.ownerId,
-      message: `You accepted ${professional?.fullName} for project "${project.title}".`,
+      message: `You accepted ${professional?.fullName} for project "${project.title}". Project status is now In Progress.`,
       status: "unread",
     });
     emitToUser(project.ownerId, "notification:new", ownerNotification);
 
     const professionalNotification = await Notification.create({
       userId: professional?.id,
-      message: `You have been selected for project "${project.title}" by the owner.`,
+      message: `You have been selected for project "${project.title}" by the owner. Project status is now In Progress.`,
       status: "unread",
     });
     emitToUser(professional?.id, "notification:new", professionalNotification);
 
-    emitToProject(assignment.projectId, "project:updated", assignment);
+    emitToProject(assignment.projectId, "project:updated", { assignment, project });
 
-    return res.status(200).json({ success: true, assignment });
+    return res.status(200).json({ success: true, assignment, project });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: "Internal server error" });

@@ -1,5 +1,5 @@
 import { sequelize } from "../db_connect.js";
-import { DataTypes, Sequelize } from "sequelize";
+import { DataTypes } from "sequelize";
 
 const ProgressReport = sequelize.define("ProgressReport", {
     id: {
@@ -77,7 +77,7 @@ const ProgressReport = sequelize.define("ProgressReport", {
     generatedAt: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: Sequelize.NOW
+        defaultValue: DataTypes.NOW
     }
 });
 

@@ -24,6 +24,19 @@ const Project = sequelize.define("Project", {
         type: DataTypes.STRING,
         allowNull: false
     },
+    latitude: {
+        type: DataTypes.FLOAT,
+        allowNull: true
+    },
+    longitude: {
+        type: DataTypes.FLOAT,
+        allowNull: true
+    },
+    geofenceRadiusMeters: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 500
+    },
     description: {
         type: DataTypes.TEXT,
         allowNull: true
